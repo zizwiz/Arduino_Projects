@@ -55,7 +55,7 @@ void loop()
     lcd.print(" ");
     lcd.print(temperature[i]);
     lcd.print((char)223);
-    lcd.print("C");
+    lcd.print("C ");
     lcd.setCursor(10,line);
     lcd.print(humidity[i]);
     lcd.print("%");
