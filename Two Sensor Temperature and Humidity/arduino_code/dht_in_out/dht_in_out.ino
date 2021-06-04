@@ -1,130 +1,47 @@
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-//#include <Adafruit_BME280.h>
-#include <Adafruit_BMP280.h>
+#include <Adafruit_BME280.h>
+#include <DS3231.h>
+#include <SPI.h>
+#include <SD.h>
 
-#define DHTPIN1 3 //define the pins we will use to get the data from.
+#define DHTPIN1 3 //define the pins we will use to get the temperature data from.
+#define DHTTYPE DHT22
+DHT dht(DHTPIN1, DHTTYPE);
 
+DS3231  rtc(SDA, SCL);
 LiquidCrystal_I2C lcd(0x27, 20, 4); // set the LCD address to 0x27 for a 20 chars and 4 line display
+Adafruit_BME280 bme;
 
-//create an array to put the read data into
-#define DHTTYPE DHT22   // DHT 22  (AM2302)
-DHT dht(DHTPIN1, DHTTYPE); //// Initialize DHT sensor for normal 16mhz Arduino
-
-//Adafruit_BME280 bme;
-Adafruit_BMP280 bme;
-
-float humidity[2];
-float temperature[2];
-float pressure[1];
-float smiley[20] = {0};
-float PreviousValue = 0;
-
-int graph[20];
-int block_size = 0;
-int pressureNow;
+Time t;
+File DataFile;
 
 char SerialInput = '0';
 
 String output = "";
+String Filename = "datalog.csv";
+String MyTime2 = "";
+String MyDST = "";
+
+float humidity[2];
+float temperature[2];
+float pressure[1];
+float PreviousValue = 0;
+
+int graph[20];
 
 // We need this so Arduino will actually count a minute.
 unsigned long counter = -1;
 unsigned long count = 0;
 
-unsigned long seconds = 1000L; //Notice the L 
+unsigned long seconds = 1000L; //Notice the L
 unsigned long minute = seconds * 60;
-unsigned long iterations = 59L;
-
+int iterations = 59L;
 
 //Define Custom Characters
-
-
-byte happy[] =
-{
-  B11011,
-  B11011,
-  B00100,
-  B00100,
-  B10001,
-  B10001,
-  B01110,
-  B00000
-};
-
-byte level[] =
-{
-  B11011,
-  B11011,
-  B00100,
-  B00100,
-  B01110,
-  B10001,
-  B01110,
-  B00000
-};
-
-byte sad[] =
-{
-  B11011,
-  B11011,
-  B00100,
-  B00100,
-  B01110,
-  B10001,
-  B10001,
-  B00000
-};
-
-byte empty[] =
-{
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000
-};
-
-byte up[] =
-{
-  B11111,
-  B11111,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000
-};
-
-byte even[] =
-{
-  B00000,
-  B00000,
-  B00000,
-  B11111,
-  B11111,
-  B00000,
-  B00000,
-  B00000
-};
-
-byte down[] =
-{
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B00000,
-  B11111,
-  B11111
-};
+byte up[] = {B11111, B11111, B00000, B00000, B00000, B00000, B00000, B00000};
+byte even[] = {B00000, B00000, B00000, B11111, B11111, B00000, B00000, B00000};
+byte down[] = {B00000, B00000, B00000, B00000, B00000, B00000, B11111, B11111};
 
 void setup()
 {
@@ -133,31 +50,51 @@ void setup()
 
   Serial.begin(9600);  //open the RS232 port at 9600 baud
   dht.begin();
-  
+  rtc.begin();
+
   if (!bme.begin(0x76)) {
-    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    Serial.println(F("BME280 initialisation failed"));
     while (1);
   }
 
+  if (!SD.begin(10)) {
+    Serial.println(F("SD initialisation failed"));  // Chip select pin for us is pin 10. Chamge this if you use a different pin.
+    while (1);
+  }
+
+  Serial.println(F("All Initialised OK."));
+
+  // open the file. note that only one file can be open at a time,
+  // so you have to close this one before opening another.
+  DataFile = SD.open(Filename, FILE_WRITE);
+
+  // if the file is available, write to it:
+  if (DataFile) {
+    DataFile.println(F("Date,Time,ITemp,IHumidity,OTemp,OHumidity,Pressure"));
+    DataFile.close();
+    // print to the serial port too:
+    Serial.println(F("Date,Time,ITemp,IHumidity,OTemp,OHumidity,Pressure"));
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
+  }
+
+
   //Write the non-changing data
   lcd.setCursor(0, 0);
-  lcd.print("I");
+  lcd.print(F("I"));
   lcd.setCursor(0, 1);
-  lcd.print("O");
+  lcd.print(F("O"));
   lcd.setCursor(0, 2);
-  lcd.print("O");
+  lcd.print(F("O"));
 
   // create custom chars
-  lcd.createChar(0, empty);
   lcd.createChar(1, up);
   lcd.createChar(2, even);
   lcd.createChar(3, down);
-  lcd.createChar(4, happy);
-  lcd.createChar(5, level);
-  lcd.createChar(6, sad);
 
   memset(graph, 0, sizeof(graph)); //fill with 0
-  memset(smiley, 0, sizeof(smiley)); //fill with 0
 }
 
 void loop()
@@ -170,84 +107,110 @@ void loop()
 
   //   Read the outside sensor data
   temperature[1] = bme.readTemperature();
-//  humidity[1] = bme.readHumidity();
+  humidity[1] = bme.readHumidity();
   pressure[0] = bme.readPressure() / 100.0F;
+
+  //Read RTC and check UTC
+  MyTime2 = rtc.getTimeStr(); //winter time UTC time
+
+  if (!AreWeInUTC())
+  {
+    //If Summer time we add an hour UTC+1
+    MyDST  = MyTime2.substring(2);
+    MyTime2 = ((MyTime2.substring(0, 2)).toInt()) + 1;
+    if (MyTime2.toInt() < 10)
+    { // add leading zero
+      MyTime2 = "0" + (String)MyTime2 + MyDST;
+    }
+    else
+    {
+      MyTime2 = (String)MyTime2 + MyDST;
+    }
+  }
 
   //Line 0 = inside
   lcd.setCursor(1, 0);
-  lcd.print(" ");
+  lcd.print(F(" "));
   lcd.print(temperature[0]);
   lcd.print((char)223);
-  lcd.print("C ");
+  lcd.print(F("C "));
   lcd.setCursor(13, 0);
   lcd.print(humidity[0]);
-  lcd.print("%");
-
-  // construct the data to send out the RS232 if required
-  output += String(temperature[0]) + "," + String(humidity[0]) + ",";
+  lcd.print(F("%"));
 
   //line 2 and 3 = outside
   lcd.setCursor(1, 1);
-  lcd.print(" ");
+  lcd.print(F(" "));
   lcd.print(temperature[1]);
   lcd.print((char)223);
-  lcd.print("C ");
+  lcd.print(F("C "));
   lcd.setCursor(13, 1);
   lcd.print(humidity[1]);
-  lcd.print("%");
+  lcd.print(F("%"));
 
   lcd.setCursor(1, 2);
-  lcd.print(" ");
+  lcd.print(F(" "));
   lcd.print(pressure[0]);
-  lcd.print("mb  ");
+  lcd.print(F("mb  "));
   lcd.setCursor(11, 2);
 
   counter ++;
 
-  //lcd.print(pressure[1]);
-
-
-//  pressureNow = pressure[0];
-//
-//lcd.print(pressureNow);
-//lcd.print(PreviousValue);
-//
-//if (PreviousValue > 0)
-//{
-//  if ( pressureNow > PreviousValue) {
-//    block_size = 1;
-//  }
-//  else if (pressureNow == PreviousValue) {
-//    block_size = 2;
-//  }
-//  else if (pressureNow < PreviousValue) {
-//    block_size = 3;
-//  }
-//}
-//  PreviousValue = pressureNow;
-
-
-  // construct the data to send out the RS232 if required
-  output += String(temperature[1]) + "," + String(humidity[1]) + "," + String(pressure[0]) + ",";
-
-  if ((counter > iterations) || (counter == 0)) // draw graph every hour 
+  if ((counter > iterations) || (counter == 0)) // draw graph every hour
   {
+    //Make Data string
+    output = (String)rtc.getDateStr() + "," + MyTime2 + "," + (String)temperature[0] + "," ;
+    output += (String)humidity[0] + "," + (String)temperature[1] + ",";
+    output += (String)humidity[1] + "," + (String)pressure[0];
+
+    DataFile = SD.open(Filename, FILE_WRITE);
+
+    // if the file is available, write to it
+    if (DataFile)
+    {
+      DataFile.println(output);
+      // print to the serial port too:
+      Serial.println(output);
+      DataFile.close();
+    }
+    // if the file isn't open, pop up an error:
+    else {
+      Serial.println(F("error opening datalog.csv"));
+    }
+
     DrawGraph();
     counter = 0;
   }
 
+  delay(minute); // delay = 1 minute as unsigned Long
+
+
+  //dump file to serial monitor.
   if (Serial)
   {
     SerialInput = Serial.read();
-    if (SerialInput == '1')
+    if (SerialInput == '1') //write file to monitor
     {
-      Serial.println(output); //send output to the App
+      File dataFile = SD.open(Filename);
+
+      // if the file is available, read it:
+      if (dataFile) {
+        while (dataFile.available()) {
+          Serial.write(dataFile.read());
+        }
+        dataFile.close();
+      }
+      // if the file isn't open, pop up an error:
+      else {
+        Serial.println(F("Error opening datalog.csv"));
+      }
+    }
+    else if (SerialInput == '2') //delete file
+    {
+      SD.remove(Filename);
     }
     SerialInput = '0';
   }
-
-
-  delay(minute); // delay = 1 minute as unsigned Long
 }
 
 
@@ -255,12 +218,11 @@ void DrawGraph()
 {
   int line = 0;
   int value = 0;
-  int pNow = 0;
-  int latestP = 0;
-
+  int block_size = 0;
+  int pressureNow;
 
   pressureNow = pressure[0];
-  
+
   if (PreviousValue > 0)
   {
     if ( pressureNow > PreviousValue) {
@@ -273,66 +235,59 @@ void DrawGraph()
       block_size = 3;
     }
   }
-    PreviousValue = pressureNow;
+  PreviousValue = pressureNow;
 
   for (int i = 1; i < 20; i++)
   {
-    pNow = smiley[i];
     lcd.setCursor(line, 3);
     line = line + 1;
     value = graph[i];
-    lcd.write(byte(value));
+
+    if (value == 0)
+  {
+    lcd.write((char)32); //space
+    }
+    else
+    {
+      lcd.write(byte(value));
+    }
+
     graph[i - 1] = graph[i];
-    smiley[i - 1] = pNow;
   }
-  latestP = pressure[0];
-  smiley[19] = latestP;
+
   graph[19] = block_size;
-  lcd.write(byte(block_size));
-
-  lcd.setCursor(13, 2);
-  //lcd.print("       ");
-
-  if (graph[0] != 0)
+  if (block_size == 0)
   {
-    lcd.setCursor(13, 2);
-    if (smiley[0] > smiley[19]) {
-      lcd.write(6);
-    }
-    else if (smiley[0] = smiley[19]) {
-      lcd.write(5);
-    }
-    else if (smiley[0] < smiley[19]) {
-      lcd.write(4);
-    }
+    lcd.write((char)32);//space
+  }
+  else
+  {
+    lcd.write(byte(block_size));    
   }
 
-  if (graph[9] != 0)
+}
+
+bool AreWeInUTC()
+{
+  String MyTime = "";
+
+  //use this for UK summertime = false = UTC+1, wintertime = true = UTC
+  t = rtc.getTime();
+  MyTime = (String)rtc.getDateStr();
+
+  bool DST = 1;
+  byte yy = t.year % 100;  //get year of century
+
+  byte mm = (MyTime.substring(3, 5)).toInt();
+  byte dd = (MyTime.substring(0, 2)).toInt();
+
+  byte x1 = 31 - (yy + yy / 4 - 2) % 7; //last Sunday March
+  byte x2 = 31 - (yy + yy / 4 + 2) % 7; // last Sunday October
+
+  if ((mm > 3 && mm < 10) || (mm == 3 && dd >= x1) || (mm == 10 && dd < x2))
   {
-    lcd.setCursor(16, 2);
-    if (smiley[9] > smiley[19]) {
-      lcd.write(6);
-    }
-    else if (smiley[9] = smiley[19]) {
-      lcd.write(5);
-    }
-    else if (smiley[9] < smiley[19]) {
-      lcd.write(4);
-    }
+    DST = 0;
   }
 
-  if (graph[18] != 0)
-  {
-    lcd.setCursor(19, 2);
-    if (smiley[18] > smiley[19]) {
-      lcd.write(6);
-    }
-    else if (smiley[18] = smiley[19]) {
-      lcd.write(5);
-    }
-    else if (smiley[18] < smiley[19]) {
-      lcd.write(4);
-    }
-  }
-
+  return DST;
 }
