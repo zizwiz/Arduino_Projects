@@ -383,8 +383,8 @@ namespace Test_Firmata
         void moveBackward()
         {
             byte valuec;
-           // lbl_stepper_pins.Invoke((MethodInvoker)(() => lbl_stepper_pins.Text = ""));
-           // lbl_stepper_signal.Invoke((MethodInvoker)(() => lbl_stepper_signal.Text = ""));
+            lbl_stepper_pins.Invoke((MethodInvoker)(() => lbl_stepper_pins.Text = ""));
+            lbl_stepper_signal.Invoke((MethodInvoker)(() => lbl_stepper_signal.Text = ""));
 
             if ((countB == 0) || (countB == 1))
             {
