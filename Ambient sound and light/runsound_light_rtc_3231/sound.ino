@@ -1,3 +1,7 @@
+unsigned long counter = 0;
+unsigned long sampleBufferValue = 0;
+const int OUT_PIN = 8;
+
 void runsound()
 {
   //Sample for 1 minute
@@ -11,7 +15,7 @@ void runsound()
   } while (counter < 10600000); //this equates to 1 minute
 
 
-  Serial.println(GetTime() + sampleBufferValue); //write out value of sum of ones.
+  Serial.println(GetTime() + "S " + sampleBufferValue); //write out value of sum of ones.
 
   DataFile = SD.open(SoundFilename, FILE_WRITE);
 

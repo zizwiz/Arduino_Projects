@@ -2,13 +2,6 @@
 #include<NoDelay.h>
 #include <DS3231.h>
 
-
-const int OUT_PIN = 8;
-const int SAMPLE_TIME = 10; //ms for sample to see how many high we see
-
-unsigned long counter = 0;
-unsigned long sampleBufferValue = 0;
-
 String output = "";
 String SoundFilename = "SoundLog.csv";
 String LightFilename = "LightLog.csv";
@@ -18,8 +11,8 @@ DS3231  rtc(SDA, SCL);
 Time t;
 
 void runsound();//Must declare function before noDelay, function can not take arguments
-//noDelay runsoundtime(900000L, runsound);//Creats a noDelay varible set to 60min, will call runsound function
-noDelay runsoundtime(720000L, runsound); //12min
+//noDelay runsoundtime(900000L, runsound);//Creats a noDelay varible set to 15min, will call runsound function
+noDelay runsoundtime(720000L, runsound); //12min 
 
 void runlight();//Must declare function before noDelay, function can not take arguments
 noDelay runlighttime(720000L, runlight);//12min 
@@ -28,7 +21,7 @@ void setup() {
   Serial.begin(9600);
   rtc.begin();
 
-  if (!SD.begin(10)) {
+  if (!SD.begin(4)) {
     Serial.println(F("SD initialisation failed"));  // Chip select pin for us is pin 10. Chamge this if you use a different pin.
     while (1);
   }
@@ -39,6 +32,7 @@ void setup() {
 
   // if the file is available, write to it:
   if (DataFile) {
+    Serial.println(F("SoundFile Made"));
     DataFile.println(F("Date,Time,Sound"));
     DataFile.close();
   }
@@ -51,6 +45,7 @@ void setup() {
 
   // if the file is available, write to it:
   if (DataFile) {
+    Serial.println(F("LightFile Made"));
     DataFile.println(F("Date,Time,Light"));
     DataFile.close();
   }
